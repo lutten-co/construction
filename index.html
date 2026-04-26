@@ -84,46 +84,57 @@ tr:hover td{background:rgba(255,255,255,.02);}
   <div class="top"><h2 id="ptitle">員工名冊</h2><div id="pact"></div></div>
   <div class="pg" id="pg"></div>
 </div>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
+/* Firebase Realtime Database REST API - no preflight CORS */
 (function(){
-  try{
-    firebase.initializeApp({
-      apiKey:"AIzaSyAZ_tbnGL-NjGxO6EtoGtz0c6O0uSPnH7c",
-      databaseURL:"https://lutten-co-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId:"lutten-co",
-      appId:"1:656639113013:web:d3dd36557896eba0b53e7c"
-    });
-    var _db=firebase.database();
-    /* sv: write to Firebase (async, background) */
-    window.fbSv=function(k,v){
-      return _db.ref("cg/"+k).set(v).catch(function(e){console.warn("FB write",k,e.message);});
-    };
-    /* svAll: read all keys from Firebase, update localStorage, then callback */
-    window.fbSync=function(keys,cb){
-      var left=keys.length;
-      if(!left){cb();return;}
-      keys.forEach(function(k){
-        var _done=false;
-        var _t=setTimeout(function(){
-          if(!_done){_done=true;console.warn("FB timeout:",k);if(--left===0)cb();}
-        },4000);
-        _db.ref("cg/"+k).once("value").then(function(snap){
-          if(!_done){_done=true;clearTimeout(_t);
-            if(snap.exists())try{localStorage.setItem("cg_"+k,JSON.stringify(snap.val()));}catch(e){}
-            if(--left===0)cb();}
-        }).catch(function(e){
-          if(!_done){_done=true;clearTimeout(_t);console.warn("FB err",k,e.message);if(--left===0)cb();}
-        });
-      });
-    };
-    window.fbReady=true;
-    console.log("Firebase ready");
-  }catch(e){
-    console.warn("Firebase failed:",e.message);
-    window.fbReady=false;
+  var DB="https://lutten-co-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+  /* READ: simple GET, no preflight */
+  function fbGet(path){
+    return fetch(DB+"/cg/"+path+".json")
+      .then(function(r){return r.json();});
   }
+
+  /* WRITE: use XMLHttpRequest to avoid preflight CORS */
+  function fbPut(path,data){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      xhr.open("PUT",DB+"/cg/"+path+".json",true);
+      xhr.setRequestHeader("Content-Type","application/json");
+      xhr.onload=function(){resolve(xhr.responseText);};
+      xhr.onerror=function(){reject(new Error("XHR error"));};
+      xhr.send(JSON.stringify(data));
+    });
+  }
+
+  window.fbSv=function(k,v){
+    fbPut(k,v).catch(function(e){console.warn("FB write",k,e.message);});
+  };
+
+  window.fbSync=function(keys,cb){
+    var left=keys.length;
+    if(!left){cb();return;}
+    keys.forEach(function(k){
+      var _done=false;
+      var _t=setTimeout(function(){
+        if(!_done){_done=true;if(--left===0)cb();}
+      },6000);
+      fbGet(k).then(function(data){
+        if(!_done){_done=true;clearTimeout(_t);
+          if(data!==null&&data!==undefined)
+            try{localStorage.setItem("cg_"+k,JSON.stringify(data));}catch(e){}
+          if(--left===0)cb();
+        }
+      }).catch(function(e){
+        if(!_done){_done=true;clearTimeout(_t);
+          console.warn("FB err",k,e.message);
+          if(--left===0)cb();}
+      });
+    });
+  };
+
+  window.fbReady=true;
+  console.log("Firebase REST ready");
 })();
 </script>
 <script>
