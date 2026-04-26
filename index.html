@@ -67,7 +67,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <body>
 <div class="sb">
   <div class="logo"><h1>&#9881; 工地管理</h1><p>Construction Mgr</p></div>
-  <div class="sb-reset"><button onclick="hardReset()">&#9888; 清除所有資料</button><button onclick="exportBackup()" style="margin-top:4px;width:100%;padding:5px;background:rgba(240,180,41,.1);border:1px solid rgba(240,180,41,.25);color:var(--acc);border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;">&#128190; 匯出備份</button></div>
+  <div class="sb-reset"><button onclick="hardReset()">&#9888; 清除所有資料</button><button onclick="exportBackup()" style="margin-top:4px;width:100%;padding:5px;background:rgba(240,180,41,.1);border:1px solid rgba(240,180,41,.25);color:var(--acc);border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;">&#128190; 匯出備份</button><button onclick="importBackup()" style="margin-top:4px;width:100%;padding:5px;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);color:var(--blue);border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;">&#128229; 匯入備份</button></div>
   <div class="ni" id="nav-db" onclick="showDbDiagram()" style="border-left:3px solid var(--purple);color:var(--purple);font-size:11px;">&#128202; 資料庫架構圖</div>
   <div class="ni on" id="nav-w" onclick="go('w')">DB1 &#128119; 員工名冊</div>
   <div class="ni" id="nav-b" onclick="go('b')">DB2 &#128203; 可上班表</div>
@@ -3094,6 +3094,37 @@ function exportBackup(){
   URL.revokeObjectURL(url);
   alert("備份下載完成！建議存到 Google Drive 保存");
 }
+function importBackup(){
+  var inp=document.createElement("input");
+  inp.type="file";inp.accept=".json";
+  inp.addEventListener("change",function(e){
+    var file=e.target.files[0];
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      try{
+        var bk=JSON.parse(ev.target.result);
+        var keys=["workers","clients","dispatch","dorm","ins","salary","attendance","sign","invoices","quotes"];
+        var count=0;
+        keys.forEach(function(k){
+          if(bk[k]!==undefined){
+            localStorage.setItem("cg_"+k,JSON.stringify(bk[k]));
+            /* Also push to Firebase */
+            if(window.fbReady)window.fbSv(k,bk[k]);
+            count++;
+          }
+        });
+        alert("\u5305\u542b "+count+" \u7b46\u8cc7\u6599\u5df2\u5339\u5165\uff01\n\u73fe\u5728\u91cd\u65b0\u8f09\u5165\u9801\u9762...");
+        setTimeout(function(){location.reload();},500);
+      }catch(err){
+        alert("\u8b80\u53d6\u5931\u6557\uff1a"+err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+  inp.click();
+}
+
 </script>
 </body>
 </html>
