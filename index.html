@@ -105,12 +105,17 @@ tr:hover td{background:rgba(255,255,255,.02);}
       var left=keys.length;
       if(!left){cb();return;}
       keys.forEach(function(k){
+        var _done=false;
+        var _t=setTimeout(function(){
+          if(!_done){_done=true;console.warn("FB timeout:",k);if(--left===0)cb();}
+        },4000);
         _db.ref("cg/"+k).once("value").then(function(snap){
-          if(snap.exists()){
-            try{localStorage.setItem("cg_"+k,JSON.stringify(snap.val()));}catch(e){}
-          }
-          if(--left===0)cb();
-        }).catch(function(){if(--left===0)cb();});
+          if(!_done){_done=true;clearTimeout(_t);
+            if(snap.exists())try{localStorage.setItem("cg_"+k,JSON.stringify(snap.val()));}catch(e){}
+            if(--left===0)cb();}
+        }).catch(function(e){
+          if(!_done){_done=true;clearTimeout(_t);console.warn("FB err",k,e.message);if(--left===0)cb();}
+        });
       });
     };
     window.fbReady=true;
@@ -3071,9 +3076,16 @@ function migrateQSEED(){
   }
 
   if(window.fbReady){
-    window.fbSync(KEYS,launch);
+    /* Timeout: if Firebase takes >5s, launch anyway */
+    var _fbTimeout=setTimeout(function(){
+      console.warn("Firebase sync timeout, launching with local data");
+      launch();
+    },5000);
+    window.fbSync(KEYS,function(){
+      clearTimeout(_fbTimeout);
+      launch();
+    });
   } else {
-    /* No Firebase - use localStorage directly */
     launch();
   }
 })();
