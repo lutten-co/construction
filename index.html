@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>工地管理 v20260429_0034 工地管理系統</title>
+<title>工地管理 v20260430_0305 工地管理系統</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d1117;--s1:#161b22;--s2:#21262d;--bdr:#30363d;--txt:#e6edf3;--mut:#8b949e;--acc:#f0b429;--blue:#58a6ff;--purple:#bc8cff;--orange:#ffa657;--green:#3fb950;--red:#f85149;}
@@ -253,6 +253,8 @@ function openAbsentPicker(group,dt,state,signBox){
   hint.textContent="點選後在簽單顯示刪除線＋未到標註";box.appendChild(hint);
   if(!window._absentSet)window._absentSet={};
   var absentSet=window._absentSet;
+  /* Snapshot for cancel revert */
+  var _origAbsent=JSON.parse(JSON.stringify(absentSet));
   var grid=document.createElement("div");grid.style.cssText="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;";
   allWorkers.forEach(function(idNo){
     var key=dt+"|"+idNo;
@@ -262,22 +264,39 @@ function openAbsentPicker(group,dt,state,signBox){
     var nm=document.createElement("span");nm.textContent=getName(idNo)||idNo;
     if(isAbs){nm.style.textDecoration="line-through";var t=document.createElement("span");t.style.cssText="font-size:10px;position:absolute;bottom:2px;right:4px;color:var(--red);";t.textContent="未到";pill.appendChild(t);}
     pill.insertBefore(nm,pill.firstChild);
-    pill.addEventListener("click",function(){
-      absentSet[key]=!absentSet[key];
-      if(!state[idNo])state[idNo]={count:1,overtime:0,type:"rough",name:getName(idNo)};
-      state[idNo].absent=absentSet[key];
-      if(ov.parentNode)ov.parentNode.removeChild(ov);
-      openAbsentPicker(group,dt,state,signBox);
-      if(window._signRebuild)window._signRebuild();
+    (function(key2,idNo2,pill2,nm2){
+    pill2.addEventListener("click",function(){
+      absentSet[key2]=!absentSet[key2];
+      if(!state[idNo2])state[idNo2]={count:1,overtime:0,type:"rough",name:getName(idNo2)};
+      state[idNo2].absent=absentSet[key2];
+      var isNowAbs=absentSet[key2];
+      pill2.style.borderColor=isNowAbs?"var(--red)":"var(--bdr)";
+      pill2.style.background=isNowAbs?"rgba(248,81,73,.1)":"var(--s2)";
+      pill2.style.color=isNowAbs?"var(--red)":"var(--txt)";
+      nm2.style.textDecoration=isNowAbs?"line-through":"";
     });
+    })(key,idNo,pill,nm);
     grid.appendChild(pill);
   });
   box.appendChild(grid);
   var row=document.createElement("div");row.style.cssText="display:flex;gap:8px;";
   var done=document.createElement("button");done.className="btn bp";done.textContent="完成";
-  done.addEventListener("click",function(){if(ov.parentNode)ov.parentNode.removeChild(ov);if(window._signRebuild)window._signRebuild();});
+  done.addEventListener("click",function(){
+    if(ov.parentNode)ov.parentNode.removeChild(ov);
+    if(window._signRebuild)window._signRebuild();
+  });
   var can=document.createElement("button");can.className="btn bs";can.textContent="取消";
-  can.addEventListener("click",function(){if(ov.parentNode)ov.parentNode.removeChild(ov);});
+  can.addEventListener("click",function(){
+    /* Revert absentSet to original state */
+    Object.keys(absentSet).forEach(function(k){delete absentSet[k];});
+    Object.keys(_origAbsent).forEach(function(k){absentSet[k]=_origAbsent[k];});
+    /* Revert state.absent */
+    allWorkers.forEach(function(n){
+      if(state[n])state[n].absent=!!_origAbsent[dt+"|"+n];
+    });
+    if(ov.parentNode)ov.parentNode.removeChild(ov);
+    if(window._signRebuild)window._signRebuild();
+  });
   row.appendChild(done);row.appendChild(can);box.appendChild(row);
   ov.appendChild(box);document.body.appendChild(ov);
 }
@@ -468,7 +487,7 @@ function getIdNo(name){
 function getName(idNo){
   for(var i=0;i<W.length;i++){
     if(W[i].idNo===idNo)return W[i].name;
-    if(W[i].name===idNo)return idNo; /* fallback: legacy name-stored */
+    if(W[i].name===idNo)return W[i].name; /* input is already a name */
   }
   return idNo;
 }
@@ -800,8 +819,18 @@ function previewQ(i){
     if(_stampUrl)setTimeout(function(){URL.revokeObjectURL(_stampUrl);},5000);
   } else alert("請允許彈出視窗以預覽列印");
 }
-
-function makeEmptyRow(){return{locIdx:"",roughNames:[],stoneNames:[],note:""};}
+function makeEmptyRow(){
+  var prevLoc="",prevRough=[],prevStone=[];
+  if(DT&&DT.length){
+    var _sorted=DT.slice().sort(function(a,b){return rocDateInt(b.date)-rocDateInt(a.date);});
+    var _last=_sorted[0];
+    var fi=findLocIdx(_last.loc||"");
+    if(fi!=="")prevLoc=fi;
+    prevRough=(_last.roughNames||[]).map(function(n){return getName(n)||n;});
+    prevStone=(_last.stoneNames||[]).map(function(n){return getName(n)||n;});
+  }
+  return{locIdx:prevLoc,roughNames:prevRough,stoneNames:prevStone,note:""};
+}
 function findLocIdx(loc){for(var i=0;i<C.length;i++){var c=C[i];if((c.con||"")+" － "+(c.proj||"")===loc)return String(i);}return "";}
 function buildClientOpts(selVal){
   var o="<option value=''>-- 選擇地點 --</option>";
@@ -1026,7 +1055,9 @@ function salGetPeople(){
   sortedDates.forEach(function(dt){
     DT.filter(function(d){return d.date===dt;}).forEach(function(d){
       (d.roughNames||[]).concat(d.stoneNames||[]).forEach(function(n){
-        if(n&&people.indexOf(n)<0) people.push(n);
+        if(!n)return;
+        var nm=getName(n)||n; /* normalize idNo→name */
+        if(people.indexOf(nm)<0) people.push(nm);
       });
     });
   });
@@ -1950,6 +1981,29 @@ function buildSignSheet(box,group,dt,state){
     }
     locDiv.appendChild(sumLine);box.appendChild(locDiv);
   });
+  /* ── 確認存入 button (always at bottom of sign sheet) ── */
+  var _saveRow=document.createElement("div");
+  _saveRow.style.cssText="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding:0 4px;position:sticky;bottom:0;background:var(--s1);padding:10px 4px;";
+  var _saveBtn=document.createElement("button");_saveBtn.className="btn bp";_saveBtn.textContent="確認存入";
+  _saveBtn.addEventListener("click",function(){
+    var selAny=Object.keys(state).some(function(k){return state[k].selected;});
+    if(!selAny){alert("請先選取人員");return;}
+    saveSignState(dt,group,state,dt);
+    /* Close any modal containers */
+    ["salModal","signModal"].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.innerHTML="";
+    });
+    if(typeof pgS==="function"&&document.getElementById("nav-s")&&document.getElementById("nav-s").classList.contains("on"))pgS();
+    if(typeof pgSign==="function"&&document.getElementById("nav-sign")&&document.getElementById("nav-sign").classList.contains("on"))pgSign();
+  });
+  var _cancelBtn=document.createElement("button");_cancelBtn.className="btn bs";_cancelBtn.textContent="取消";
+  _cancelBtn.addEventListener("click",function(){
+    ["salModal","signModal"].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.innerHTML="";
+    });
+  });
+  _saveRow.appendChild(_cancelBtn);_saveRow.appendChild(_saveBtn);
+  box.appendChild(_saveRow);
 }
 function openWorkerSignEdit(idNo){
   var state=window._signState||{};
@@ -2829,8 +2883,13 @@ function saveSignState(date,group,state,signDate){
   if(!signDate)signDate=date;
   /* Persist sign state to SIGN DB */
   /* group = [{entry:{loc,...}}], state = {idNo:{selected,count,overtime,type,name}} */
-  /* First remove old entries for this date */
-  SIGN=SIGN.filter(function(e){return e.date!==date;});
+  /* Only remove entries for locations in this group (preserve other clients) */
+  var groupLocs=(group||[]).map(function(item){return item.entry&&item.entry.loc||"";}).filter(Boolean);
+  SIGN=SIGN.filter(function(e){
+    if(e.date!==date)return true; /* keep other dates */
+    if(!groupLocs.length)return false; /* no locs: remove all for date */
+    return groupLocs.indexOf(e.loc)<0; /* keep if loc not in group */
+  });
   var byLoc={};
   group.forEach(function(item){
     var d=item.entry; var loc=d.loc||"";
@@ -3151,23 +3210,30 @@ function getOwedSignDates(idNo){
   var paidDates=[];
   var hasAdvance=false;
   SAL.forEach(function(rec){
+    var payInt=rocDateInt(rec.payDate);
     (rec.records||[]).forEach(function(r){
-      if(r.name===idNo||r.name===wname||r.idNo===idNo){
-        if(rec.payDate&&rocDateInt(rec.payDate)>todayKey) hasAdvance=true;
-        (r.dates||[]).forEach(function(d){
-          if(paidDates.indexOf(d.date)<0) paidDates.push(d.date);
+      var rmatch=(r.name===idNo)||(r.name===wname)||
+                 (r.idNo===idNo)||(getName(r.name)===wname);
+      if(!rmatch)return;
+      if(rec.payDate&&payInt>todayKey)hasAdvance=true;
+      if(r.dates&&r.dates.length){
+        r.dates.forEach(function(d){
+          if(paidDates.indexOf(d.date)<0)paidDates.push(d.date);
         });
       }
+      /* else: dates[] empty - skip, owed check handled by SIGN */
     });
   });
-  if(!paidDates.length) return {owed:[],advance:hasAdvance};
+  /* Build signed+confirmed dates from SIGN */
   var signedConfirmed={};
   SIGN.forEach(function(e){
     (e.entries||[]).forEach(function(en){
-      if((en.idNo===idNo||en.name===wname)&&en.confirmed)
-        signedConfirmed[e.date]=true;
+      var ematch=(en.idNo===idNo)||(en.name===wname)||
+                 (en.idNo===wname)||(en.name===idNo);
+      if(ematch&&en.confirmed)signedConfirmed[e.date]=true;
     });
   });
+  /* owed = paidDates where no confirmed sign */
   var owedDates=paidDates.filter(function(dt){return !signedConfirmed[dt];});
   owedDates.sort(function(a,b){return rocDateInt(a)-rocDateInt(b);});
   return {owed:owedDates,advance:hasAdvance};
@@ -3213,8 +3279,23 @@ function openSignFromSal(){
     var ov2=document.createElement("div");ov2.className="ov";ov2.style.alignItems="flex-start";ov2.style.overflowY="auto";
     var box2=document.createElement("div");box2.className="mod";box2.style.cssText="max-width:760px;margin:20px auto;";
     window._signRebuild=function(){buildSignSheet(box2,group,dt,state);};
+    /* 確認存入 button */
+    var saveRow=document.createElement("div");saveRow.style.cssText="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding:0 4px;";
+    var saveBtn=document.createElement("button");saveBtn.className="btn bp";saveBtn.textContent="確認存入";
+    saveBtn.addEventListener("click",function(){
+      var selAny=Object.keys(state).some(function(k){return state[k].selected;});
+      if(!selAny){alert("請先選取人員");return;}
+      saveSignState(dt,group,state,dt);
+      salDm.innerHTML="";
+      dm.innerHTML="";
+      pgS();
+    });
+    var cancelBtn=document.createElement("button");cancelBtn.className="btn bs";cancelBtn.textContent="取消";
+    cancelBtn.addEventListener("click",function(){salDm.innerHTML="";dm.innerHTML="";});
+    saveRow.appendChild(cancelBtn);saveRow.appendChild(saveBtn);
     ov2.appendChild(box2);salDm.appendChild(ov2);
     buildSignSheet(box2,group,dt,state);
+    box2.appendChild(saveRow); /* append AFTER buildSignSheet to avoid being cleared */
   });
   document.getElementById("salSignCancel").addEventListener("click",function(){dm.innerHTML="";});
 }
@@ -3260,24 +3341,45 @@ function openSalSignCal(){
   buildC(yr,mo);
 }
 
-function getUnpaidSignDates(idNo){
-  var wname=getName(idNo);
+function getUnpaidSignDates(input){
+  var wname=getName(input);
+  var widNo="";
+  for(var _wi=0;_wi<W.length;_wi++){
+    if(W[_wi].name===wname){widNo=W[_wi].idNo;break;}
+  }
+  /* Collect confirmed sign dates */
   var confirmed=[];
   SIGN.forEach(function(e){
     (e.entries||[]).forEach(function(en){
-      if((en.idNo===idNo||en.name===wname)&&en.confirmed)
+      var match=(en.name===wname)||(widNo&&en.idNo===widNo)||(en.idNo===input)||(en.name===input);
+      if(match&&en.confirmed)
         if(confirmed.indexOf(e.date)<0)confirmed.push(e.date);
     });
   });
   if(!confirmed.length)return [];
-  var paid=[];
+  /* Collect paid dates from SAL */
+  var paidInts=[];
   SAL.forEach(function(rec){
+    var payInt=rocDateInt(rec.payDate);
     (rec.records||[]).forEach(function(r){
-      if(r.name===idNo||r.name===wname||r.idNo===idNo)
-        (r.dates||[]).forEach(function(d){if(paid.indexOf(d.date)<0)paid.push(d.date);});
+      var rmatch=(r.name===wname)||(r.name===input)||(widNo&&r.idNo===widNo)||(getName(r.name)===wname);
+      if(!rmatch)return;
+      if(r.dates&&r.dates.length){
+        /* dates[] has entries - use them */
+        r.dates.forEach(function(d){
+          var di=rocDateInt(d.date);
+          if(di&&paidInts.indexOf(di)<0)paidInts.push(di);
+        });
+      } else if(payInt){
+        /* dates[] empty (old record) - treat all sign dates up to payDate as paid */
+        confirmed.forEach(function(dt){
+          var di=rocDateInt(dt);
+          if(di<=payInt&&paidInts.indexOf(di)<0)paidInts.push(di);
+        });
+      }
     });
   });
-  return confirmed.filter(function(dt){return paid.indexOf(dt)<0;})
+  return confirmed.filter(function(dt){return paidInts.indexOf(rocDateInt(dt))<0;})
     .sort(function(a,b){return rocDateInt(a)-rocDateInt(b);});
 }
 
@@ -3538,8 +3640,22 @@ function openSignEditor(clientCid){
     var ov2=document.createElement("div");ov2.className="ov";ov2.style.alignItems="flex-start";ov2.style.overflowY="auto";
     var box2=document.createElement("div");box2.className="mod";box2.style.cssText="max-width:760px;margin:20px auto;";
     window._signRebuild=function(){buildSignSheet(box2,group,dt,state);};
+    /* 確認存入 button */
+    var saveRow2=document.createElement("div");saveRow2.style.cssText="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding:0 4px;";
+    var saveBtn2=document.createElement("button");saveBtn2.className="btn bp";saveBtn2.textContent="確認存入";
+    saveBtn2.addEventListener("click",function(){
+      var selAny=Object.keys(state).some(function(k){return state[k].selected;});
+      if(!selAny){alert("請先選取人員");return;}
+      saveSignState(dt,group,state,dt);
+      sm.innerHTML="";
+      pgSign();
+    });
+    var cancelBtn2=document.createElement("button");cancelBtn2.className="btn bs";cancelBtn2.textContent="取消";
+    cancelBtn2.addEventListener("click",function(){sm.innerHTML="";});
+    saveRow2.appendChild(cancelBtn2);saveRow2.appendChild(saveBtn2);
     ov2.appendChild(box2);sm.appendChild(ov2);
     buildSignSheet(box2,group,dt,state);
+    box2.appendChild(saveRow2); /* after buildSignSheet */
   });
   dateRow.appendChild(dateInp);dateRow.appendChild(goBtn);addSec.appendChild(dateRow);
   var calPop=document.createElement("div");calPop.id="seDateCalPop";addSec.appendChild(calPop);
@@ -3700,10 +3816,9 @@ function saveDorm(){
   sv("dorm",DORM);document.getElementById("dormModal").innerHTML="";pgH();
 }
 
-/* ── INS helpers ── */
-function getDayNames(dt){var names=[];DT.filter(function(d){return d.date===dt;}).forEach(function(d){(d.roughNames||[]).concat(d.stoneNames||[]).forEach(function(n){if(n&&names.indexOf(n)<0)names.push(n);});});return names;}
+/* ── INS helpers ── */function getDayNames(dt){var names=[];DT.filter(function(d){return d.date===dt;}).forEach(function(d){(d.roughNames||[]).concat(d.stoneNames||[]).forEach(function(n){if(!n)return;var nm=getName(n)||n;if(names.indexOf(nm)<0)names.push(nm);});});return names;}
 function getPrevDate(dt){var sorted=getSortedDates();for(var i=0;i<sorted.length;i++){if(rocDateInt(sorted[i])<rocDateInt(dt))return sorted[i];}return null;}
-function getDormNames(){return DORM.map(function(d){return d.idNo||d.name;});}
+function getDormNames(){return DORM.map(function(d){return d.name||d.idNo;});}
 
 /* ── pgIns ── */
 function pgIns(){
@@ -3772,7 +3887,7 @@ function calcInsPreview(dt){
   var todayWorkers=getDayNames(dt);var dormNames=getDormNames();
   var prevDt=getPrevDate(dt);
   var prevInsRec=prevDt?INS.filter(function(r){return r.date===prevDt;})[0]:null;
-  var prevTotal=prevInsRec?prevInsRec.total:[];
+  var prevTotal=(prevInsRec?prevInsRec.total:[]).map(function(n){return getName(n)||n;});
   var rmNames=prevTotal.filter(function(n){return todayWorkers.indexOf(n)<0&&dormNames.indexOf(n)<0;});
   var totalNames=prevTotal.slice();
   todayWorkers.forEach(function(n){if(totalNames.indexOf(n)<0)totalNames.push(n);});
@@ -4036,7 +4151,9 @@ function renderDRows(){
         /* collect names used by OTHER rows */
         var usedByOthers=[];
         dRows.forEach(function(r2,r2i){if(r2i!==ri)(r2.roughNames||[]).forEach(function(n){if(n&&usedByOthers.indexOf(n)<0)usedByOthers.push(n);});});
-        var wId=w.idNo||w.name;var isSel=(row.roughNames||[]).indexOf(wId)>=0;
+        var wId=w.name;
+        var wIdNo=w.idNo||"";
+        var isSel=(row.roughNames||[]).some(function(n){return n===wId||(wIdNo&&n===wIdNo);});
         var isUsed=!isSel&&(usedByOthers.indexOf(w.name)>=0||usedByOthers.indexOf(w.idNo||"")>=0);
         if(isUsed) return; /* hide if used in another row */
         var pill=document.createElement("div");
